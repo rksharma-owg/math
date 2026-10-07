@@ -1,0 +1,73 @@
+name: Tensor arguments fork preflight
+
+on:
+  push:
+    branches: [codex/preflight-tensor-arguments]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            python: '3.9'
+          - os: ubuntu-24.04
+            python: '3.14'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      TESTED_SHA: 5e4a3a0d7815c962b12e47bb054694675be5330f
+      BASE_SHA: adc7f1241b42e322a6451854ab7e4b4c146bf78a
+      PAPER: preprints/Universal-Tensor-Squares-for-Symmetric-Groups-September-24-2026
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TESTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: preprints/Universal-Tensor-Squares-for-Symmetric-Groups-September-24-2026
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Verify exact patch and merge baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+          git fetch --depth=1 https://github.com/openai/math.git "$BASE_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE_SHA"
+          git merge-base --is-ancestor FETCH_HEAD HEAD
+          printf 'Tested contribution: %s\nTarget baseline: %s\n' "$TESTED_SHA" "$BASE_SHA"
+          git diff --check "$BASE_SHA" HEAD
+          python3 --version
+          g++ --version
+          uname -a
+      - name: Baseline wrapper tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_work=$(mktemp -d)
+          git archive "$BASE_SHA" "$PAPER/verification" | tar -x -C "$baseline_work"
+          cd "$baseline_work/$PAPER/verification/code"
+          env -u PYTHONOPTIMIZE python3 -B -m unittest -v test_smallcode_verify.py
+      - name: Complete finite and regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          verification_work=$(mktemp -d)
+          cp -R "$PAPER/verification" "$verification_work/"
+          cd "$verification_work/verification/code"
+          g++ -O3 -std=c++17 smallcode_submitted.cpp -o smallcode_submitted
+          env -u PYTHONOPTIMIZE python3 -B smallcode_verify.py runs 1 3 {5..8} {10..64} --seconds 300 --log ../computation/recheck-61-degrees.log
+          env -u PYTHONOPTIMIZE python3 -B capacity_checks.py intermediate
+          env -u PYTHONOPTIMIZE python3 -B capacity_checks.py exceptional
+          env -u PYTHONOPTIMIZE python3 -B capacity_independent.py
+          g++ -O2 -std=c++17 -fsanitize=undefined -fno-sanitize-recover=all smallcode_dump.cpp -o smallcode_dump_ubsan
+          env -u PYTHONOPTIMIZE python3 -B smallcode_verify.py compare {1..12} --log ../computation/recheck-independent.log
+          env -u PYTHONOPTIMIZE python3 -B -m unittest -v test_smallcode_verify.py
+          printf 'PASS all documented finite checks and 15 regression tests for %s\n' "$TESTED_SHA"
