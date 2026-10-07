@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cerrno>
+#include <cstdio>
 using namespace std;
 using U=uint64_t;
 using D=unsigned __int128;
@@ -85,10 +87,20 @@ double score(D b){ // affects order only
  for(int k=1;k<=n;k++)s+=log(double(k))*cnt(b&((~b)<<k));
  return s;
 }
+int degreeArgument(int argc,char**argv){
+ if(argc==2){
+   char* end;
+   errno=0;
+   long value=strtol(argv[1],&end,10);
+   if(!errno&&end!=argv[1]&&!*end&&value>=1&&value<=64)return int(value);
+ }
+ fprintf(stderr,"Usage: %s <degree between 1 and 64>\n",argv[0]);
+ return 0;
+}
 int main(int argc,char**argv){
- n=atoi(argv[1]);
+ n=degreeArgument(argc,argv);
+ if(!n)return EXIT_FAILURE;
  if(n==2||n==4||n==9)return 0;
- if(n<1||n>64)abort();
  for(int s=0;s<=n;s++){
    diagrams(s,s,s,63,one(64)-1);
    int m=1;while(m<2*(int)masks[s].size())m*=2;

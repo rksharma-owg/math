@@ -4,7 +4,8 @@
 #include <iostream>
 
 int main(int argc, char** argv) {
- n = atoi(argv[1]);
+ n = degreeArgument(argc, argv);
+ if (!n) return EXIT_FAILURE;
  for (int s = 0; s <= n; ++s) {
   diagrams(s, s, s, 63, one(64)-1);
   int m = 1;

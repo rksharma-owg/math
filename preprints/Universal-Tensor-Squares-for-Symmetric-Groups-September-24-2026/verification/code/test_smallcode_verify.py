@@ -3,6 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -99,6 +100,55 @@ class RunExitTests(unittest.TestCase):
     def test_real_timeout_is_detected(self):
         status, _, _, _ = verify.bounded_run([sys.executable, "-c", "import time; time.sleep(10)"], 0.05)
         self.assertEqual(status, "TIMEOUT")
+
+
+class NativeArgumentTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(directory.cleanup)
+        cls.binaries = {}
+        for name in ("smallcode_submitted", "smallcode_dump"):
+            binary = Path(directory.name) / name
+            subprocess.run([
+                "g++", "-std=c++17", "-fsanitize=undefined",
+                "-fno-sanitize-recover=all", str(verify.HERE / (name + ".cpp")),
+                "-o", str(binary),
+            ], check=True, capture_output=True, text=True)
+            cls.binaries[name] = binary
+
+    def test_invalid_arguments_fail_without_undefined_behavior(self):
+        arguments = ([], [""], ["bad"], ["1x"], ["-1"], ["0"], ["65"],
+                     ["999999999999999999999999999999"], ["1", "2"])
+        for name, binary in self.binaries.items():
+            for args in arguments:
+                with self.subTest(binary=name, arguments=args):
+                    result = subprocess.run([str(binary), *args], capture_output=True,
+                                            text=True, timeout=5)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("Usage:", result.stderr)
+                    self.assertNotIn("runtime error:", result.stderr)
+
+    def test_valid_degree_still_succeeds(self):
+        for name, binary in self.binaries.items():
+            with self.subTest(binary=name):
+                result = subprocess.run([str(binary), "1"], capture_output=True,
+                                        text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr, "")
+                if name == "smallcode_dump":
+                    self.assertIn("partition 0 1 1\n", result.stdout)
+
+    def test_submitted_excluded_degrees_still_skip(self):
+        for degree in (2, 4, 9):
+            with self.subTest(degree=degree):
+                result = subprocess.run([str(self.binaries["smallcode_submitted"]),
+                                         str(degree)], capture_output=True,
+                                        text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertEqual(result.stderr, "")
 
 
 if __name__ == "__main__":

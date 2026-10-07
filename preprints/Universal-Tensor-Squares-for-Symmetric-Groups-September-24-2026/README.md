@@ -22,6 +22,16 @@ Use Linux, Bash, Python 3.9 or later, and GNU C++ with C++17 and
 `unsigned __int128` support. The supplementary comparison also requires the
 undefined-behavior sanitizer runtime. Python assertions must be enabled.
 
+Both C++ programs require exactly one integer degree between 1 and 64.
+Missing, malformed, or out-of-range arguments print usage and exit unsuccessfully
+before computation. The submitted verifier still skips degrees 2, 4, and 9
+without certifying them.
+
+The released PDF and saved execution records, including
+`verification/computation/RESULTS.json`, describe the original verifier sources
+and run. Those historical artifacts are retained; use the commands below to
+recheck the current sources.
+
 Run the complete finite checks from this paper directory in a temporary copy:
 
 ```sh
